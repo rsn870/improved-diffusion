@@ -15,6 +15,30 @@ from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
 
 
+from spectrum import get_spectrum
+from torch import Tensor
+
+
+
+
+class MSESpectrumLoss(th.nn.MSELoss):
+    def __init__(self, *args, **kwargs):
+        super(MSESpectrumLoss, self).__init__(*args, **kwargs)
+
+    @staticmethod
+    def get_log_spectrum(input):
+        spectra = get_spectrum(input.flatten(0, 1)).unflatten(0, input.shape[:2])
+        spectra = spectra.mean(dim=1)             # average over channels
+        return (1 + spectra).log()
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        input_spectrum = self.get_log_spectrum(input)
+        target_spectrum = self.get_log_spectrum(target)
+        return super(MSESpectrumLoss, self).forward(input_spectrum, target_spectrum)
+    
+spectmse = MSESpectrumLoss(reduction='mean')
+
+
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
     Get a pre-defined beta schedule for the given name.
@@ -674,7 +698,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
+    def training_losses(self, model, x_start, t,indcs= None, steps=0, mode='direct', model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -746,6 +770,32 @@ class GaussianDiffusion:
                 terms["loss"] = terms["mse"]
         else:
             raise NotImplementedError(self.loss_type)
+        
+        if indcs is not None:
+            if steps  == 0 :
+                for i in range(len(t)):
+                    if indcs[i] == 0:
+                        if t[i].item() !=0:
+                            terms["loss"] += spectmse( self.p_sample( model, x_t[i], t[i], model_kwargs=model_kwargs)["sample"],self.q_sample(x_start[i], t[i]- th.ones_like(t[i]).long().to(t.device), noise=noise[i]))
+            else:
+                for i in range(len(t)):
+                    if indcs[i] == 0:
+                        if t[i].item() > steps and mode == 'recursive':
+                            x_f = x_t[i].clone().to(x_t.device)
+                            tim = t[i].clone().to(t.device)
+                            for i in range(steps):
+                                x_f =  self.p_sample(model, x_f, tim, model_kwargs=model_kwargs)["sample"]
+                                tim = tim - th.ones_like(tim).long().to(tim.device)
+                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i], t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])) 
+                        if t[i].item() > steps and mode == 'direct':
+                            x_f = x_t[i].clone().to(x_t.device)
+                            tim = t[i].clone().to(t.device)
+                            x_f =  self.p_sample(model, x_f, tim, model_kwargs=model_kwargs)["pred_xstart"]
+                            x_f = self.q_sample(x_f, t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])
+                           
+                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i], t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])) 
+
+        
 
         return terms
 
