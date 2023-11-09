@@ -776,24 +776,24 @@ class GaussianDiffusion:
                 for i in range(len(t)):
                     if indcs[i] == 0:
                         if t[i].item() !=0:
-                            terms["loss"] += spectmse( self.p_sample( model, x_t[i], t[i], model_kwargs=model_kwargs)["sample"],self.q_sample(x_start[i], t[i]- th.ones_like(t[i]).long().to(t.device), noise=noise[i]))
+                            terms["loss"] += spectmse( self.p_sample( model, x_t[i].unsqueeze(0).to(x_t.device), t[i].unsqueeze(0).to(t.device), model_kwargs=model_kwargs)["sample"],self.q_sample(x_start[i].unsqueeze(0).to(x_start.device), t[i].unsqueeze(0).to(t.device)- th.ones_like(t[i]).unsqueeze(0).long().to(t.device), noise=noise[i].unsqueeze(0)))
             else:
                 for i in range(len(t)):
                     if indcs[i] == 0:
                         if t[i].item() > steps and mode == 'recursive':
-                            x_f = x_t[i].clone().to(x_t.device)
-                            tim = t[i].clone().to(t.device)
-                            for i in range(steps):
+                            x_f = x_t[i].unsqueeze(0).clone().to(x_t.device)
+                            tim = t[i].unsqueeze(0).clone().to(t.device)
+                            for j in range(steps):
                                 x_f =  self.p_sample(model, x_f, tim, model_kwargs=model_kwargs)["sample"]
                                 tim = tim - th.ones_like(tim).long().to(tim.device)
-                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i], t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])) 
+                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i].unsqueeze(0).to(x_start.device), t[i].unsqueeze(0).to(t.device)- steps*th.ones_like(t[i]).unsqueeze(0).long().to(t.device), noise=noise[i].unsqueeze(0))) 
                         if t[i].item() > steps and mode == 'direct':
-                            x_f = x_t[i].clone().to(x_t.device)
-                            tim = t[i].clone().to(t.device)
+                            x_f = x_t[i].unsqueeze(0).clone().to(x_t.device)
+                            tim = t[i].unsqueeze(0).clone().to(t.device)
                             x_f =  self.p_sample(model, x_f, tim, model_kwargs=model_kwargs)["pred_xstart"]
-                            x_f = self.q_sample(x_f, t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])
+                            x_f = self.q_sample(x_f, t[i].unsqueeze(0)- steps*th.ones_like(t[i]).unsqueeze(0).long().to(t.device), noise=noise[i].unsqueeze(0))
                            
-                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i], t[i]- steps*th.ones_like(t[i]).long().to(t.device), noise=noise[i])) 
+                            terms["loss"] += spectmse(x_f,self.q_sample(x_start[i].unsqueeze(0).to(x_start.device), t[i].unsqueeze(0).to(t.device)- steps*th.ones_like(t[i]).unsqueeze(0).long().to(t.device), noise=noise[i].unsqueeze(0))) 
 
         
 
